@@ -1,0 +1,170 @@
+---
+title: "Raspberries Document"
+author: "Jenna Moscaritolo"
+date: "10/18/2020"
+output: pdf_document
+urlcolor: blue
+---
+
+```{r setup, include=FALSE, warning=FALSE, message=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
+library(knitr)
+library(tidyverse)
+library(magrittr)
+library(kableExtra)
+```
+
+# Project Goal
+The goal of this project is to further analyze raspberries grown in the years 2015 to 2019 in states categorized by the state they are grown in. There will also be an analysis of fungicides, herbicides, insecticides, and fertilizers (the chemical applications the farmers utilize). The main data that will be looked at for this assignment is the weight of the raspberries in pounds (lbs).
+
+
+
+# Procedure
+
+## 1. Data Cleaning
+
+For the data cleaning section, the outputs are the resulting columns from each step.
+
+
+### Step 1.1 Reading the data
+
+The data that was collected is from the United States Department of Agriculture (USDA) [database selector](https://quickstats.nass.usda.gov).
+
+The specific [dataset](https://quickstats.nass.usda.gov/results/D416E96E-3D5C-324C-9334-1D38DF88FFF1) used in this project is about berry collections throughout the US.
+
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+ag_data <- read_csv("berries.csv", col_names = TRUE)
+colnames(ag_data)
+```
+
+### Step 1.2. Removing the columns with NAs
+
+There are spots in the data that are filled with "NA" meaning that there was no data recorded for that specific point in time. This could be due to a number of things including a lack of funding or technology malfunctions. Now, the dataset is ready to be utilized without being stopped by the NAs.
+
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+NA_cols <- which(sapply(ag_data, function(x)all(is.na(x))))
+ag_data %<>% select(-all_of(NA_cols))
+colnames(ag_data)
+```
+
+### Step 1.3. Removing the columns with one outcome
+
+For instance, the column called "Program" only has outputs of "SURVEY" which does not give us new information necessary for the analysis. Also, the column "State ANSI" is a copy of the column "State" so this is removed as well.
+
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+uni_cols <- sapply(ag_data, function(x) length(unique(x)))
+ag_data %<>% subset(select = uni_cols > 1)
+ag_data %<>% select(-`State ANSI`) 
+colnames(ag_data)
+```
+
+### Step 1.4. Pulling the raspberry data
+
+For this project, the only data at interest is the raspberry data with the column "Period" only consisting of the term "YEAR". So, we take out the data with strawberries, blueberries, or any other berry that is not raspberries along with removing the "MARKETING YEAR" data.
+
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+ras <- ag_data %>% filter((Commodity=="RASPBERRIES") & (Period=="YEAR"))
+ras %<>% select(-c(Period, Commodity))
+colnames(ras)
+```
+
+### Step 1.5. Filtering out not unique rows in column "Domain"
+
+There are many rows with information that will not help further analyze the topic and will therefore not be used. So, it is okay to remove that information for this project.
+
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+ras$'Domain' %>% unique
+d_total <- filter(ras, Domain=="TOTAL")
+d_total$`Data Item` %>% unique()
+d_total$`Domain Category` %>% unique()
+ras <- filter(ras, Domain!="TOTAL")
+```
+
+### Step 1.6. Cleaning the column data
+
+Here, there are many columns that have a lot of information in them that would be better separated. An example is how "Data Items" begins ever line with "RASPBERRIES, BEARING - ..." so, the parts before and after the "-" will be separated.
+
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+ras %<>% separate(`Data Item`, c("Bearing", "Production"), sep = "-")
+ras %<>% separate(Domain, c("D_left", "D_right"), sep = ", ")
+ras[is.na(ras)] <- ""
+ras$Chemical_Type <- ifelse(ras$D_left == "FERTILIZER", ras$D_left, ras$D_right)
+ras %<>% separate(`Domain Category`, c("DC_left", "DC_right"), sep = ":")
+ras[is.na(ras)] <- ""
+ras %<>% rename(Chemicals = DC_right)
+ras %<>% separate(Bearing, c("Berry", "Bearing"), sep = ",")
+ras %<>% select(-Bearing)
+ras %<>% separate(Production, c("Production", "Measurement"), sep = ",")
+ras %<>% filter(Measurement == " MEASURED IN LB")
+ras %<>% select(-c(D_right, D_left, DC_left, Berry))
+```
+
+## 2. New Data Frame
+
+After all of the data cleaning, this table below is the remaining data that is needed to further the project.
+
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+kable(head(ras)) %>% kable_styling(font_size = 12)
+```
+
+
+
+# Exploratory Data Analysis
+The goal of this project is to explore raspberries grown in the years 2015 to 2019 in states categorized by the state they are grown in. With this, there is no question to answer but rather to practice techniques in data cleaning and presentations. So, this project will be plotting visually and interpreting that information.
+
+## 3. Histograms
+
+Here are two histograms: one looking at the years and one presenting the number of pounds.
+
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+ras_eda <- ras %>% select(Year, State, Measurement, Chemical_Type, Value)
+ras_eda$Value %<>% as.numeric()
+hist_year <- hist(ras_eda$Year, xlab = "Year", main = "Histogram of Years")
+hist_lbs <- hist(ras_eda$Value, xlab = "Number of Lbs", main = "Histogram of Value (in lbs)")
+```
+
+## 4. Scatterplot
+
+Here is a scatterplot showing the relationship between the chemical type and the pounds produced and color coding the data points by state. The geom_jitter() function ensures that points will not overlap and thus not being visible. Also, this project will use points from California, Oregon, and Washington because they have the most usable data.
+
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+scatterplot <- ggplot(data = ras_eda, mapping = aes(Chemical_Type,(Value))) + geom_jitter(aes(color = State)) + ggtitle("Scatterplot of Chemical Type vs. Lbs Produced") + xlab("Chemical Type") + ylab("Value in Lbs")
+scatterplot
+```
+
+## 5. Calculations
+
+In these three tables below, the averages of the number of pounds of raspberries for each state, year, and chemical type.
+
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+table_state <- ras_eda %>% group_by(State) %>% summarize(mean(Value, na.rm = TRUE))
+table_year <- ras_eda %>% group_by(Year) %>% summarize(mean(Value, na.rm = TRUE))
+table_chem <- ras_eda %>% group_by(Chemical_Type) %>% summarize(mean(Value, na.rm = TRUE))
+
+kable(table_state) %>% kable_styling(font_size = 12)
+kable(table_year) %>% kable_styling(font_size = 12)
+kable(table_chem) %>% kable_styling(font_size = 12)
+```
+
+
+
+# Conclusion
+
+This project requires a lot less information than the dataset initially had. So, many columns were removed and all of the NAs were filtered out as they were not able to help further the analyses. Information like Watershed Code and Week Ending were not necessary for this analysis so they were removed from the subset.
+
+The data from 2016 and 2018 does not have as many points as the other years so it is difficult to make any predictions without assuming multiple unknown variables such as climate, how often the farmer tends to the berries, etc. The Histogram of Years easily proves this statement. Looking at the Histogram of Value (in lbs), the data is right-skewed meaning that the raspberries were, most of the time, at a lower weight.
+
+In the plot called Scatterplot of Chemical Type vs. Lbs Produced, it shows that there were not many data points for the fertilizer and other categories of Chemical Type. So, let's look at the other three types: fungicide, herbicide, and insecticide. It seems that more points, but not that many points are for herbicides either. Herbicides are almost used only by Oregon and Washington farmers whereas those two states and California use fungicide and insecticide often. In terms of weight, Oregon generally has lighter raspberries and Washington has more middle to heavy weights. California is fairly average but also does not have as many data points as the other two states have.
+
+For each state, the last three tables show the weight in lbs, the year, and the chemical type of the raspberries collected. The two tables with Year and Chemical Type did not have that much of a change in the averages of pounds. However, for the table with State, Washington had the heaviest raspberries while Oregon has the lighted raspberries by far.
+
+
+
+# References
+1. Bruce Cowles, Anna Cook. Personalized advice in meetings.
+2. Hadley Wickham, Romain François, Lionel Henry and Kirill Müller (2020). dplyr: A Grammar of Data Manipulation. R package version 1.0.2. https://CRAN.R-project.org/package=dplyr
+3. Hao Zhu (2020). kableExtra: Construct Complex Table with 'kable' and Pipe Syntax. R package version 1.2.1. https://CRAN.R-project.org/package=kableExtra
+4. H. Wickham. ggplot2: Elegant Graphics for Data Analysis. Springer-Verlag New York, 2016.
+5. Stefan Milton Bache and Hadley Wickham (2014). magrittr: A Forward-Pipe Operator for R. R package version 1.5. https://CRAN.R-project.org/package=magrittr
+6. Wickham et al., (2019). Welcome to the tidyverse. Journal of Open Source Software, 4(43), 1686, https://doi.org/10.21105/joss.01686
+7. Yihui Xie (2020). knitr: A General-Purpose Package for Dynamic Report Generation in R. R package version 1.29.
